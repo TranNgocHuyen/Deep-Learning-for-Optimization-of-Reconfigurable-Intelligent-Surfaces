@@ -182,7 +182,9 @@ class RISNetPI(nn.Module):
         o = self.conv_8(torch.stack(o, dim=0).mean(dim=0)) * np.pi
         return o
 
+#===============================================================================================================
 
+from torch.utils.data import Dataset
 class RTChannels(Dataset):
     def __init__(self, params, channel_tx_ris_pinv, device='cpu', test=False):
         self.params = params
@@ -192,35 +194,57 @@ class RTChannels(Dataset):
         # self.group_definition = np.random.choice(10240, (int(10240 / params["num_users"]), params["num_users"]), False)
         self.channels_ris_rx = torch.load(params['channel_ris_rx_path'], map_location=torch.device(device)).to(torch.complex64)
 
+        #Định hình lại shape
         self.channels_ris_rx = torch.reshape(self.channels_ris_rx, params['channel_ris_rx_original_shape'])[:,
                                : params['ris_shape'][0],
-                               : params['ris_shape'][1]]
-        self.channels_ris_rx = torch.reshape(self.channels_ris_rx, (
+                               : params['ris_shape'][1]]        #[10240,1,1024] => [(10240, N, N)]
+        self.channels_ris_rx = torch.reshape(self.channels_ris_rx, (    #=> [(10240, 1, NxN)]
             -1, 1, params['ris_shape'][0] * params['ris_shape'][1]))
-
+        
+        # Tính G và chuẩn hóa và trả về features (độ lớn, pha) của G (channels_ris_rx)
         self.channel_array = cp2array_risnet(self.channels_ris_rx,
                                              1 / params['std_ris'],
                                              params['mean_ris'],
                                              device=device)
-
-        self.channels_direct = torch.load(params['channel_direct_path'], map_location=torch.device(device)).to(torch.complex64)
-        channels_direct_array = prepare_channel_direct_features(self.channels_direct, channel_tx_ris_pinv,
+        #load direct
+        self.channels_direct = torch.load(params['channel_direct_path'], map_location=torch.device(device)).to(torch.complex64) #[10240,1,9]
+        # Tính toán J=DH+ và chuẩn hóa và trả về features (độ lớn,pha) của J 
+        channels_direct_array = prepare_channel_direct_features(self.channels_direct, channel_tx_ris_pinv, #
                                                                 self.params, self.device)
-        self.channel_array = torch.cat([self.channel_array, channels_direct_array], 1)
+        # Trả về features of RIS antenna n Với N phần tử 
+        self.channel_array = torch.cat([self.channel_array, channels_direct_array], 1) #kết hợp 2 ma trận [10240,4,1024] với 4 là features
 
         self.test = test
+    #được sử dụng để định nghĩa cách lấy một mẫu dữ liệu đơn lẻ từ dataset.
+    def __getitem__(self, item): #item: chỉ số ,vị trí của mẫu dữ liệu cần lấy.
+        # lấy index của 1 group 4 user
+        user_indices = self.group_definition[item, :]                                 #trích xuất từ mảng [5120,4] => đc mảng 1D có shape (4,)
+        #print(user_indices)                                                     
+        
+        # Tưong ứng mỗi index user trong 10240, tìm ra 4 feature tương ứng
+        channel_features = torch.cat([self.channel_array[i, :, :] for i in user_indices])   # torch.Size([16, 1024])
+                                                                                            #16: (4 người dùng × 4 đặc trưng cho mỗi người dùng).
+                                                                                            #1024: số lượng ăng-ten hoặc phần tử RIS.
+        
+        # Lấy channel_ris_rx tương ứng 4 user
+        channels_ris_rx = torch.squeeze(self.channels_ris_rx[user_indices, :, :]) #[(10240, 1, NxN)]=>[4,NxN]
+        
+        # Lấy locations (tọa độ 3 chiều) tương ứng 4 user
+        locations = self.locations[user_indices, :] 
 
-    def __getitem__(self, item):
-        user_indices = self.group_definition[item, :]
-        channel_features = torch.cat([self.channel_array[i, :, :] for i in user_indices])
-        channels_ris_rx = torch.squeeze(self.channels_ris_rx[user_indices, :, :])
-        locations = self.locations[user_indices, :]
-        channels_direct = torch.squeeze(self.channels_direct[user_indices, :])
-        return [item, channel_features, channels_ris_rx, channels_direct, locations]
+
+        channels_direct = torch.squeeze(self.channels_direct[user_indices, :])          # [4,1,9]=>[4,9]
+        return [item, channel_features, channels_ris_rx, channels_direct, locations]    
+             # [item,features(G,J=DH+), G               , D             , location]
+             #      [16, 1024]          [4,NxN]         [4,9]              [4,3]
 
     def __len__(self):
         return self.group_definition.shape[0]
 
+
+
+'''data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device)
+return=> [item, channel_features, channels_ris_rx, channels_direct, locations, precoding]'''
 
 class RTChannelsWMMSE(RTChannels):
     def __init__(self, params, channel_tx_ris_pinv, device='cpu', test=False):
@@ -228,24 +252,36 @@ class RTChannelsWMMSE(RTChannels):
         self.num_cpus = cpu_count()
         self.v = None
 
+    # WMMSE precoding with channels_tx_ris
     def wmmse_precode(self, model, channels_tx_ris, device='cpu', num_iters=5):
-        total_samples = len(self)
-        num_tx_antennas = self.channels_direct.shape[2]
+        print(self)
+        total_samples = len(self)   #5120
 
+        num_tx_antennas = self.channels_direct.shape[2] #[10240, 1, 9]
+
+        # KHởi tạo V (precoding vector) ngẫũ nhiên (5120,9,4)
         v = np.empty((total_samples, num_tx_antennas, self.params["num_users"]), dtype=np.complex)
+        
         for idx in range(0, len(self)):
-            batch = self.__getitem__(idx)
-            channels_ris_rx_array = batch[1][None, :, :]
+            # Load  infor channel
+            batch = self.__getitem__(idx) #[item, channel_features, channels_ris_rx, channels_direct, locations]
+            channels_ris_rx_features_array = batch[1][None, :, :] # channel_features [1, 16, 1024]
+            #print(channels_ris_rx_features_array)
             channel_ris_rx = batch[2][None, :, :]
             channel_direct = batch[3][None, :, :]
-            if self.params["phase_shift"] == "discrete":
-                fo = model(channels_ris_rx_array)[0].detach()
+
+            #feature [1, 16, 1024] =>(model)=> ma trận phi ([1, 1024]) 
+            if self.params["phase_shift"] == "discrete": # in file params "phase_shift": "continuous", 
+                fo = model(channels_ris_rx_features_array)[0].detach() #torch.Size([1, 1024]) Returns a new Tensor, detached from the current graph
             else:
-                fo = model(channels_ris_rx_array)[0].detach()
+                fo = model(channels_ris_rx_features_array)[0].detach()
+            
+            # Từ phi (fo) , tính kênh đầy đủ
             h = compute_complete_channel_continuous(channels_tx_ris, fo,
                                                     channel_ris_rx, channel_direct,
                                                     self.params)
-            if self.v is None:
+            
+            if self.v is None: # luôn là None
                 init_v = mmse_precoding(h, self.params, device)[0, :, :]
             else:
                 init_v = self.v[idx, :, :]
@@ -256,14 +292,14 @@ class RTChannelsWMMSE(RTChannels):
         self.v = torch.from_numpy(v).to(torch.complex64).to(self.device)
 
     def cut_data(self, num):
-        self.channels_ris_rx_array = self.channel_array[:num, :, :, :]
+        self.channels_ris_rx_features_array = self.channel_array[:num, :, :, :]
         self.channels_ris_rx = self.channels_ris_rx[:num, :, :]
         self.channels_direct = self.channels_direct[:num, :, :]
 
     def __getitem__(self, item):
         data = super(RTChannelsWMMSE, self).__getitem__(item)
         if self.v is not None:
-            data.append(self.v[item, :, :])
+            data.append(self.v[item, :, :])   # thêm precoding=v 
 
         return data
 

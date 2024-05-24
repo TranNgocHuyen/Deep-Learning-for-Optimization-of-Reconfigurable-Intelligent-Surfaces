@@ -9,7 +9,7 @@ import copy
 params4users = {'lr': 8e-4,             # learning rate
                 'epoch': 50,            # kỷ nguyên
                 'num_users': 4,         #4 USERS 
-                'iter_wmmse': 2000,     # số loop của mã hóa wmmse
+                'iter_wmmse': 10,     # số loop của mã hóa wmmse
                 'epoch_per_iter_wmmse': 1,
                 'entropy_history_length': 5,
                 'alphas': [0.25, 0.25, 0.25, 0.25],   # hệ số của 4 người dùng
@@ -24,9 +24,10 @@ params4users = {'lr': 8e-4,             # learning rate
                 "phase_shift": "continuous",    # dịch pha liên tục , not rời rạc
                 "discrete_phases": torch.tensor([0, np.pi])[None, None, :], #tensor([[[0.0000, 3.1416]]])
 
-                'mean_ris': 6.2378e-5,          #fix bên dưới
+                # Các thông số để chuẩn hóa
+                'mean_ris': 6.2378e-5,          #fix channels_ris_rx
                 'std_ris': 5.0614e-5,           #fix
-                'mean_direct': 1.4374e-4,       #fix
+                'mean_direct': 1.4374e-4,       #fix channel_direct @ channel_tx_ris_pinv
                 'std_direct': 3.714e-4,         #fix
                 
                 'ris_shape': (32, 32),          # kích thước của IRS là 32x32=1024

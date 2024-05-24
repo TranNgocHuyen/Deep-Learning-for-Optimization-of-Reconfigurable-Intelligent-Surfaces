@@ -12,33 +12,40 @@ except:
 
 from params import params
 device='cpu'
-def mmse_precoding(channel, params, device='cpu'):
-    if type(channel) is np.ndarray:
-        channel = torch.from_numpy(channel).to(device)
-    eye = torch.eye(channel.shape[1]).repeat((channel.shape[0], 1, 1)).to(device)
+
+'''Hàm thực hiện tiền mã hóa mmse precoding trả về V'''
+def mmse_precoding(complete_channel, params, device='cpu'):
+    if type(complete_channel) is np.ndarray:
+        complete_channel = torch.from_numpy(complete_channel).to(device)
+    eye = torch.eye(complete_channel.shape[1]).repeat((complete_channel.shape[0], 1, 1)).to(device)
+    
     #torch.eye =>Trả về một tenxơ 2-D với các số 1 trên đường chéo và các số 0 ở nơi khác.
-    p = channel.transpose(1, 2).conj() @ torch.linalg.inv(channel @ channel.transpose(1, 2).conj() +
+    p = complete_channel.transpose(1, 2).conj() @ torch.linalg.inv(complete_channel @ complete_channel.transpose(1, 2).conj() +
                                                           1 / params['tsnr'] * eye)
     trace = torch.sum(torch.diagonal((p @ p.transpose(1, 2).conj()), dim1=1, dim2=2).real, dim=1, keepdim=True)
     p = p / torch.unsqueeze(torch.sqrt(trace), dim=2)
     return p
 
 
+'''CHuẩn hóa và trả về the features of RIS antenna n, và x1024 phần tử'''
+# Tính G và chuẩn hóa và trả về features (độ lớn, pha) của G (irs-> rx)
 def cp2array_risnet(cp, factor=1, mean=0, device="cpu"):
-    # Input: (batch, antenna)
-    # Output: (batch, feature, antenna))
-    array = torch.cat([(cp.abs() - mean) * factor, cp.angle() * 0.55], dim=1)
-
+    # Input: (number of data samples,1,N antenna)
+    # Output: (number of data samples,2 feature,N antenna)) 
+    # features là độ lớn và pha của mỗi phần tử phức
+    
+    array = torch.cat([(cp.abs() - mean) * factor, cp.angle() * 0.55], dim=1) # cat là ghép 2 ma trận lại (ko phải cộng từng phần tử)
     return array.to(device)
 
 
+# Tính toán J=DH+ và chuẩn hóa và trả về features (độ lớn,pha) của J 
 def prepare_channel_direct_features(channel_direct, channel_tx_ris_pinv, params, device='cpu'):
     equivalent_los_channel = channel_direct @ channel_tx_ris_pinv
     return cp2array_risnet(equivalent_los_channel, 1 / params['std_direct'], params["mean_direct"], device)
 
-# Hàm tính WSR
+'''Hàm tính WSR'''
 def weighted_sum_rate(complete_channel, precoding, params):
-    channel_precoding = complete_channel @ precoding
+    channel_precoding = complete_channel @ precoding 
     channel_precoding = torch.square(channel_precoding.abs())
     wsr = 0
     num_users = channel_precoding.shape[1]
@@ -143,9 +150,13 @@ def solve_mu(mu, *args):
     p = args[2]
     return np.sum(phi / (lambbda + mu + 1e-3) ** 2) - p
 
-
-def compute_complete_channel_continuous(channel_tx_ris, fcn_output, channel_ris_rx, channel_direct, params):
+'''Từ phi, tính kênh đầy đủ '''
+def compute_complete_channel_continuous(channel_tx_ris, fcn_output, channel_ris_rx, channel_direct, params): #fcn_output: features
+    
+    # phi(phần tử trong ma trận pha) có kích thước [1,1024]
     phi = torch.exp(1j * fcn_output)
+
+    # compute complete channel G.phi@H or G.phi@H+D 
     if channel_direct is None:
         complete_channel = (channel_ris_rx * phi) @ channel_tx_ris
     else:
@@ -153,15 +164,14 @@ def compute_complete_channel_continuous(channel_tx_ris, fcn_output, channel_ris_
     return complete_channel
 
 
-# Hàm tính channel_tx_ris H và nghịch đảo giả H+
+'''Hàm tính channel_tx_ris H và nghịch đảo giả H+'''
 def prepare_channel_tx_ris(params, device):
     
     channel_tx_ris = torch.load(params['channel_tx_ris_path'], map_location=torch.device(device)).to(torch.complex64)#torch.Size([1024, 9])
     
-    # lấy ra thông tin kênh tương ứng số phần tử IRS
+    # lấy ra thông tin kênh tương ứng số phần tử IRS=> có thể tinh chỉnh số phần tử
     channel_tx_ris = channel_tx_ris[:params["ris_shape"][0] * params["ris_shape"][1], :] #torch.Size([N*N, 9])
     
     channel_tx_ris_pinv = torch.linalg.pinv(channel_tx_ris)
     return channel_tx_ris, channel_tx_ris_pinv
 
-prepare_channel_tx_ris(params, device)

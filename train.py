@@ -79,9 +79,9 @@ if __name__ == '__main__':
             params["permutation_invariant"]=False
             model = RISNet(params).to(device)
 
-#=========================================LOAD DATÁSET==========================================================
+#=========================================LOAD DATASET==========================================================
     
-    print("==================START LOAD DATÁSET=======================")
+    print("==================START LOAD DATÁSET====================")
     # Tạo tên cho file lưu checkpoint
     result_name = "ris_" + str(params['tsnr']) + "_" + str(params['ris_shape']) + '_' + str(params['alphas']) + "_"
     
@@ -89,6 +89,7 @@ if __name__ == '__main__':
     channel_tx_ris, channel_tx_ris_pinv = prepare_channel_tx_ris(params, device)
     # tạo dataset
     data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device)
+    print(len(data_set))
     # tải dữ liệu từ data_set với kích thước lô 512
     train_loader = DataLoader(dataset=data_set, batch_size=params['batch_size'], shuffle=True)
     
@@ -101,53 +102,68 @@ if __name__ == '__main__':
         tb_counter = 1 #đếm số lần ghi dữ liệu vào TensorBoard.
 
 #=========================================TRAINING=====================================================#
-    print("==================START TRAINING=======================")
+    
     model.train()
 
     optimizer_wmmse = optim.Adam(model.parameters(), params['lr'])
-    print('Checkpoint #0')
+ 
     # Training with WMMSE precoder
-    for wmmse_iter in range(params['iter_wmmse'] + 1): # 100
-
-        data_set.wmmse_precode(model, channel_tx_ris, device)
+    print("==================START TRAINING=======================")
+    
+    iter_WSR=[]
+    WSR_batch=[]
+    num_iter_wmmse=params['iter_wmmse']
+    for wmmse_iter in range(params['iter_wmmse']+1): # 100
+        print(f'Start WMMSE round: {wmmse_iter}/{num_iter_wmmse}')
         
-        print('Checkpoint #1')
-        for epoch in range(params['epoch_per_iter_wmmse']):
+        data_set.wmmse_precode(model, channel_tx_ris, device) # tính v rồi append vô dataset
+        
+        epoch_per_iter_wmmse=params['epoch_per_iter_wmmse']
+        for epoch in range(params['epoch_per_iter_wmmse']): #=1
             for batch in train_loader:
-                sample_indices, channels_ris_rx_array, channels_ris_rx, channels_direct, location, precoding = batch
+                item, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
 
                 optimizer_wmmse.zero_grad()
 
-                nn_raw_output = model(channels_ris_rx_array)
+                nn_raw_output = model(channels_ris_rx_features_array) # ma trận pha [512,1024]
+                print(nn_raw_output.shape)
 
                 # model trả về phi, từ đó tính được kênh kết hợp
                 complete_channel = compute_complete_channel_continuous(channel_tx_ris, nn_raw_output,
                                                                        channels_ris_rx, channels_direct, params)
+                # Tính WSR
                 wsr = weighted_sum_rate(complete_channel, precoding, params)
+
+                #loss=- (trung bình các giá trị wsr /batch)
                 loss = -torch.mean(wsr)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
+                
                 for name, param in model.named_parameters():
                     if torch.isnan(param.grad).any():
                         print("nan gradient found")
                 optimizer_wmmse.step()
 
-                print('WMMSE round {round}, Epoch {epoch}, '
-                      'data rate = {loss}'.format(round=wmmse_iter,
-                                               loss=-loss,
-                                             epoch=epoch))
+                print(f'WMMSE round: {wmmse_iter}/{num_iter_wmmse}, Epoch: {epoch}/{epoch_per_iter_wmmse}, data rate = {-loss}')
 
                 if tb and record:
-                    writer.add_scalar("Training/data_rate", -loss.item(), tb_counter)
+                    writer.add_scalar("Training/WSR", -loss.item(), tb_counter)
                     tb_counter += 1
-                print('Checkpoint #2')
-            print('Checkpoint #3')
+
+                WSR_batch=WSR_batch.append(-loss.item())
+                print('Checkpoint end batch')
+            
+            print(f'WMMSE round: {wmmse_iter}/{num_iter_wmmse}, Epoch: {epoch}/{epoch_per_iter_wmmse}, WSR = {-loss}')
+        
+        # Lưu WSR theo iter WSR
+        iter_WSR=iter_WSR.append(-loss.item())
 
         if record and wmmse_iter % params['wmmse_saving_frequency'] == 0:
             torch.save(model.state_dict(), params['results_path'] + result_name +
                        'WMMSE_{iter}'.format(iter=wmmse_iter))
             if tb:
                 writer.flush()
-
+    torch.save(WSR_batch,'WSR_batch.pt')
+    torch.save(iter_WSR, 'iter_WSR.pt')
 
 #python train.py --tsnr 1e11 --lr 8e-4 --ris_shape 32,32 --weights 0.25,0.25,0.25,0.25 --record True --device cpu

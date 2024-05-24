@@ -53,10 +53,10 @@ if __name__ == '__main__':
     average = list()
     data_set.wmmse_precode(model, channel_tx_ris, device, 500)
     for batch in test_loader:
-        sample_indices, channels_ris_rx_array, channels_ris_rx, channels_direct, location, precoding = batch
+        sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
 
         entropy_current_epoch = list()
-        fcn_raw_output = model(channels_ris_rx_array)
+        fcn_raw_output = model(channels_ris_rx_features_array)
         complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
                                                              channels_direct, params)
 
