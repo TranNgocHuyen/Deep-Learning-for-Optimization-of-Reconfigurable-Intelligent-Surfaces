@@ -8,20 +8,24 @@ from joblib import cpu_count
 from torch.utils.data import Dataset
 
 # permutation_variant
+# input [512, 16, 1024]
+# output [512,1024]
 class RISNet(nn.Module):
     def __init__(self, params):
         super(RISNet, self).__init__()
-        self.feature_dim = 4 * params["num_users"]
+        self.feature_dim = 4 * params["num_users"] #16
         self.output_dim = 1
         self.local_info_dim = 16
         self.global_info_dim = 16
         self.skip_connection = False
+
+        # Layer=8
         self.conv1 = nn.Conv1d(self.feature_dim,
-                               self.local_info_dim + self.global_info_dim, 1)
+                               self.local_info_dim + self.global_info_dim, 1)# 16=>32
         self.conv2 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
                                self.local_info_dim + self.global_info_dim, 1)
         self.conv3 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
-                               self.local_info_dim + self.global_info_dim, 1)
+                               self.local_info_dim + self.global_info_dim, 1)# 16=> 8
         self.conv4 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
                                self.local_info_dim + self.global_info_dim, 1)
         self.conv5 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
@@ -31,20 +35,31 @@ class RISNet(nn.Module):
         self.conv7 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
                                self.local_info_dim + self.global_info_dim, 1)
         self.conv8 = nn.Conv1d(self.feature_dim + self.local_info_dim + self.global_info_dim,
-                               self.output_dim, 1)
+                               self.output_dim, 1) # 32=> 1
 
     def forward(self, channel):
         def postprocess_layer(channel_, conv_output, n_entries):
-            local_info = conv_output[:, :self.local_info_dim, :]
+                            # (feature,             ,1024     )
+            
+            
+            '''
+            print(f'channel_{channel_.shape},\n conv_output{conv_output.shape},\n  n_entries{n_entries}')
+            channel_torch.Size([1, 16, 1024]),
+            conv_outputtorch.Size([1, 32, 1024]),
+            n_entries1024
+            print("==================================")'''
+            local_info = conv_output[:, :self.local_info_dim, :] # lấy đến 16
             global_info = torch.mean(conv_output[:, -self.global_info_dim:, :], dim=2, keepdim=True)
             global_info = global_info.repeat([1, 1, n_entries])
             layer_output = torch.cat((channel_, local_info, global_info), 1)
             return layer_output
-
-        _, _, n_antennas = channel.shape
-
+        # input [512, 16, 1024]
+        _, _, n_antennas = channel.shape #1024
+        print('channel', channel)
         r = F.relu(self.conv1(channel))
+        print('r',r)
         r = postprocess_layer(channel, r, n_antennas)
+        print('r2',r) # channel_, local_info, global_info
 
         if self.skip_connection:
             r1 = r
@@ -75,9 +90,8 @@ class RISNet(nn.Module):
 
         if self.skip_connection:
             r = (r + r3) / 2
-
         r = self.conv8(r) * np.pi
-
+        
         return r
 
 #permutation_invariant
@@ -221,7 +235,7 @@ class RTChannels(Dataset):
         user_indices = self.group_definition[item, :]                                 #trích xuất từ mảng [5120,4] => đc mảng 1D có shape (4,)
         #print(user_indices)                                                     
         
-        # Tưong ứng mỗi index user trong 10240, tìm ra 4 feature tương ứng
+        # Tưong ứng mỗi index user trong 4 users, tìm  trong 10240 ra 4 feature tương ứng
         channel_features = torch.cat([self.channel_array[i, :, :] for i in user_indices])   # torch.Size([16, 1024])
                                                                                             #16: (4 người dùng × 4 đặc trưng cho mỗi người dùng).
                                                                                             #1024: số lượng ăng-ten hoặc phần tử RIS.
@@ -254,15 +268,16 @@ class RTChannelsWMMSE(RTChannels):
 
     # WMMSE precoding with channels_tx_ris
     def wmmse_precode(self, model, channels_tx_ris, device='cpu', num_iters=5):
-        print(self)
+        #print(self)
         total_samples = len(self)   #5120
 
         num_tx_antennas = self.channels_direct.shape[2] #[10240, 1, 9]
 
         # KHởi tạo V (precoding vector) ngẫũ nhiên (5120,9,4)
-        v = np.empty((total_samples, num_tx_antennas, self.params["num_users"]), dtype=np.complex)
+        v = np.empty((total_samples, num_tx_antennas, self.params["num_users"]), dtype=np.complex_)
         
-        for idx in range(0, len(self)):
+        
+        for idx in range(0, len(self)): # lấy từng sample trong 5120 samples
             # Load  infor channel
             batch = self.__getitem__(idx) #[item, channel_features, channels_ris_rx, channels_direct, locations]
             channels_ris_rx_features_array = batch[1][None, :, :] # channel_features [1, 16, 1024]
@@ -275,15 +290,17 @@ class RTChannelsWMMSE(RTChannels):
                 fo = model(channels_ris_rx_features_array)[0].detach() #torch.Size([1, 1024]) Returns a new Tensor, detached from the current graph
             else:
                 fo = model(channels_ris_rx_features_array)[0].detach()
+            #print(fo)
+            #print(fo.shape)
             
             # Từ phi (fo) , tính kênh đầy đủ
             h = compute_complete_channel_continuous(channels_tx_ris, fo,
                                                     channel_ris_rx, channel_direct,
                                                     self.params)
-            
-            if self.v is None: # luôn là None
+            #print(self.v)
+            if self.v is None: # với vòng lặp đầu tiên thì v chưa có
                 init_v = mmse_precoding(h, self.params, device)[0, :, :]
-            else:
+            else: # những lần sau thì lấy kết quả đã được tính từ loop đầu tiên
                 init_v = self.v[idx, :, :]
             p = compute_wmmse_v_v2(h[0, :, :].cpu().detach().numpy(),
                                    init_v.cpu().detach().numpy(), 1, 1 / self.params['tsnr'],

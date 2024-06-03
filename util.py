@@ -10,8 +10,8 @@ try:
 except:
     solver = False
 
-from params import params
-device='cpu'
+#from params import params
+#device='cpu'
 
 '''Hàm thực hiện tiền mã hóa mmse precoding trả về V'''
 def mmse_precoding(complete_channel, params, device='cpu'):
