@@ -38,61 +38,170 @@ if __name__ == '__main__':
     device = 'cpu'
     wsr_array=[]
     channel_tx_ris, channel_tx_ris_pinv = prepare_channel_tx_ris(params, device)
+    path_root='/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces'
 
     if params["permutation_invariant"]==True:
       for i in [1e11,5e11,1e12]:
-        params["tsnr"] = i
+        if i==1e11:
+            params["tsnr"] = i
+            #/results_server/25-05-2024_20-00-18
 
-        model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
-        model.eval()
-        print("DONE LOAD MODEL")
+            model.load_state_dict(torch.load(path_root+'/results_server/25-05-2024_20-00-18/ris_100000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
 
-        data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
-        test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
-        print("DONE LOAD DATA")
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
         
-        data_set.wmmse_precode(model, channel_tx_ris, device, 500)
-        print("DONE PRECODE")
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
 
-        for batch in test_loader:
-            sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
 
-            entropy_current_epoch = list()
-            fcn_raw_output = model(channels_ris_rx_features_array)
-            complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
                                                              channels_direct, params)
 
-            wsr = weighted_sum_rate(complete_channel, precoding, params)
-            wsr_array.append(wsr)
-            print('average = {ave}'.format(ave=wsr.mean()))
-    
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))
+        elif i==5e11:
+            params["tsnr"] = i
+            #/results_server/27-05-2024_23-19-24
+
+            model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
+
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
+        
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
+
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                                                             channels_direct, params)
+
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))            
+        elif i==1e12:
+            params["tsnr"] = i
+            #/results_server/28-05-2024_12-00-06
+
+            model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
+
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
+        
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
+
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                                                             channels_direct, params)
+
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))
       torch.save(wsr_array,'test/'+'wsr_PI')
 
     elif params["permutation_invariant"]== False:
      for i in [1e11,5e11,1e12]:
-        params["tsnr"] = i
+        if i==1e11:
+            params["tsnr"] = i
 
-        model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
-        model.eval()
-        print("DONE LOAD MODEL")
+            model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
 
-        data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
-        test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
-        print("DONE LOAD DATA")
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
         
-        data_set.wmmse_precode(model, channel_tx_ris, device, 500)
-        print("DONE PRECODE")
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
 
-        for batch in test_loader:
-            sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
 
-            entropy_current_epoch = list()
-            fcn_raw_output = model(channels_ris_rx_features_array)
-            complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
                                                              channels_direct, params)
 
-            wsr = weighted_sum_rate(complete_channel, precoding, params)
-            wsr_array.append(wsr)
-            print('average = {ave}'.format(ave=wsr.mean()))
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))
+        elif i==5e11:
+            params["tsnr"] = i
+
+            model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
+
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
+        
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
+
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                                                             channels_direct, params)
+
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))            
+        elif i==1e12:
+            params["tsnr"] = i
+
+            model.load_state_dict(torch.load('/home/tranngochuyen/Do_an/Deep-Learning-for-Optimization-of-Reconfigurable-Intelligent-Surfaces/results_server/26-05-2024_21-00-02/ris_1000000000000.0_(32, 32)_permutation_invariant_WMMSE_400.pt',map_location=torch.device('cpu')))
+            model.eval()
+            print("DONE LOAD MODEL")
+
+            data_set = RTChannelsWMMSE(params, channel_tx_ris_pinv, device, test=True)
+            test_loader = DataLoader(dataset=data_set, batch_size=1024, shuffle=True)
+            print("DONE LOAD DATA")
+        
+            data_set.wmmse_precode(model, channel_tx_ris, device, 500)
+            print("DONE PRECODE")
+
+            for batch in test_loader:
+                sample_indices, channels_ris_rx_features_array, channels_ris_rx, channels_direct, location, precoding = batch
+
+                
+                fcn_raw_output = model(channels_ris_rx_features_array)
+                complete_channel = compute_complete_channel_continuous(channel_tx_ris, fcn_raw_output, channels_ris_rx,
+                                                             channels_direct, params)
+
+                wsr = weighted_sum_rate(complete_channel, precoding, params)
+                wsr_array.append(wsr)
+                print('average = {ave}'.format(ave=wsr.mean()))
+
+     torch.save(wsr_array,'test/'+'wsr_PV')
     
-     torch.save(wsr_array,'test/'+'wsr_PI')
+
+    # random phase
+

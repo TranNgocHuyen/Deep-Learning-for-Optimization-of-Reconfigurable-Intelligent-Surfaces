@@ -1,0 +1,11 @@
+results_server/25-05-2024_20-00-18,-tsnr 1e11 --record True --model permutation_invariant --iter_wmmse 400 batch size=512
+results_server/26-05-2024_21-00-02,--tsnr 1e12 --record True --model permutation_invariant --iter_wmmse 400 batch size=512
+results_server/27-05-2024_23-19-24,--tsnr 5e11 --record True --model permutation_invariant --iter_wmmse 400 batch size=512
+results_server/28-05-2024_12-00-06,--tsnr 1e12 --record True --model permutation_invariant --iter_wmmse 400 batch_size=1024 thấp hơn hôm 26/5
+
+results_server/29-05-2024_17-03-40,--tsnr 1e11 --record True --model permutation_variant --iter_wmmse 400
+results_server/29-05-2024_22-26-58,--tsnr 5e11 --record True --model permutation_variant --iter_wmmse 400
+results_server/30-05-2024_06-43-28,--tsnr 1e12 --record True --model permutation_variant --iter_wmmse 400
+results_server/30-05-2024_12-19-33,--tsnr 1e11 --record True --model permutation_variant --iter_wmmse 400 hội tụ 0.5 sớm hơn 29/5
+results_server/30-05-2024_18-24-19 với cpu 1e12 như 28/5 nhg mà ko đều
+
